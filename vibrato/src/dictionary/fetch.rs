@@ -7,7 +7,6 @@ use std::{
 };
 
 use digest_io::IoWrapper;
-use fs4::fs_std::FileExt;
 use sha2::{Digest, Sha256};
 use tempfile::tempdir_in;
 use walkdir::WalkDir;
@@ -49,12 +48,10 @@ pub(crate) fn download_dictionary<P: AsRef<Path>>(
         .truncate(true)
         .open(&lock_file_path)?;
 
-    lock_file
-        .lock_exclusive()
-        .map_err(|e| DownloadError::CacheIo {
-            path: lock_file_path.clone(),
-            source: e,
-        })?;
+    fs4::FileExt::lock(&lock_file).map_err(|e| DownloadError::CacheIo {
+        path: lock_file_path.clone(),
+        source: e,
+    })?;
 
     if dict_path.exists()
         && fs::exists(Path::new(&dest_dir.join(format!(
