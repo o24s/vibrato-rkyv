@@ -441,7 +441,7 @@ impl LatticeNBest {
 
 impl std::fmt::Debug for Lattice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Lattice {{ eos: {:?}, ends: [", &self.eos)?;
+        writeln!(f, "Lattice {{ eos: {:?}, ends: [", self.eos)?;
         for (i, e) in self.ends[..=self.len_char()].iter().enumerate() {
             writeln!(f, "{i} => {e:?}")?;
         }

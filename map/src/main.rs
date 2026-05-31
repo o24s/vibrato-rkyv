@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     eprintln!(
         "Writing the mapped system dictionary...: {:?}",
-        &args.sysdic_out
+        args.sysdic_out
     );
     let mut f = zstd::Encoder::new(File::create(args.sysdic_out)?, 19)?;
 
