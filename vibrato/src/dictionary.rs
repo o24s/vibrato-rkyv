@@ -61,17 +61,11 @@ const DATA_START: usize = MODEL_MAGIC_LEN + PADDING_LEN;
 pub const LEGACY_MODEL_MAGIC_PREFIX: &[u8] = b"VibratoTokenizer 0.";
 
 pub static GLOBAL_CACHE_DIR: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
-    let path = dirs::cache_dir()?.join("vibrato-rkyv");
-    fs::create_dir_all(&path).ok()?;
-
-    Some(path)
+    dirs::cache_dir().map(|p| p.join("vibrato-rkyv"))
 });
 
 pub static GLOBAL_DATA_DIR: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
-    let path = dirs::data_local_dir()?.join("vibrato-rkyv");
-    fs::create_dir_all(&path).ok()?;
-
-    Some(path)
+    dirs::data_local_dir().map(|p| p.join("vibrato-rkyv"))
 });
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -625,8 +619,7 @@ impl Dictionary {
         match access::<ArchivedDictionaryInner, Error>(data_bytes) {
             Ok(archived) => {
                 if mode == LoadMode::TrustCache {
-                    create_dir_all(global_cache_dir)?;
-                    File::create(hash_path)?;
+                    let _ = create_dir_all(global_cache_dir).and_then(|_| File::create(&hash_path));
                 }
 
                 let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
@@ -983,26 +976,23 @@ impl Dictionary {
 
         temp_file.seek(SeekFrom::Start(0))?;
 
-        let mut data_bytes = Vec::new();
-        temp_file.as_file_mut().read_to_end(&mut data_bytes)?;
+        {
+            let mmap = unsafe { Mmap::map(temp_file.as_file())? };
+            let Some(data_bytes) = mmap.get(DATA_START..) else {
+                return Err(VibratoError::invalid_argument(
+                    "path",
+                    "Dictionary file too small or corrupted.",
+                ));
+            };
 
-        let mut aligned_bytes: AlignedVec = AlignedVec::with_capacity(data_bytes.len());
-        aligned_bytes.extend_from_slice(&data_bytes);
-
-        let Some(data_bytes) = &aligned_bytes.get(DATA_START..) else {
-            return Err(VibratoError::invalid_argument(
-                "path",
-                "Dictionary file too small or corrupted.",
-            ));
-        };
-
-        let _ = access::<ArchivedDictionaryInner, Error>(data_bytes).map_err(|e| {
-            VibratoError::invalid_state(
-                "rkyv validation failed. The dictionary file may be corrupted or incompatible."
-                    .to_string(),
-                e.to_string(),
-            )
-        })?;
+            let _ = access::<ArchivedDictionaryInner, Error>(data_bytes).map_err(|e| {
+                VibratoError::invalid_state(
+                    "rkyv validation failed. The dictionary file may be corrupted or incompatible."
+                        .to_string(),
+                    e.to_string(),
+                )
+            })?;
+        }
 
         temp_file.persist(&decompressed_dict_path)?;
 
@@ -1201,26 +1191,24 @@ impl Dictionary {
         }
 
         temp_file.seek(SeekFrom::Start(0))?;
-        let mut data_bytes = Vec::new();
-        temp_file.as_file_mut().read_to_end(&mut data_bytes)?;
 
-        let mut aligned_bytes: AlignedVec = AlignedVec::with_capacity(data_bytes.len());
-        aligned_bytes.extend_from_slice(&data_bytes);
+        {
+            let mmap = unsafe { Mmap::map(temp_file.as_file())? };
+            let Some(data_bytes) = mmap.get(DATA_START..) else {
+                return Err(VibratoError::invalid_argument(
+                    "path",
+                    "Dictionary file too small or corrupted.",
+                ));
+            };
 
-        let Some(data_bytes) = &aligned_bytes.get(DATA_START..) else {
-            return Err(VibratoError::invalid_argument(
-                "path",
-                "Dictionary file too small or corrupted.",
-            ));
-        };
-
-        let _ = access::<ArchivedDictionaryInner, Error>(data_bytes).map_err(|e| {
-            VibratoError::invalid_state(
-                "rkyv validation failed. The dictionary file may be corrupted or incompatible."
-                    .to_string(),
-                e.to_string(),
-            )
-        })?;
+            let _ = access::<ArchivedDictionaryInner, Error>(data_bytes).map_err(|e| {
+                VibratoError::invalid_state(
+                    "rkyv validation failed. The dictionary file may be corrupted or incompatible."
+                        .to_string(),
+                    e.to_string(),
+                )
+            })?;
+        }
 
         temp_file.persist(output_path)?;
 

@@ -10,7 +10,7 @@ Vibrato is a fast implementation of tokenization (or morphological analysis) bas
 
 ## Significantly Faster Dictionary Loading with `rkyv`
 
-`vibrato-rkyv` utilizes the [`rkyv`](https://rkyv.org/) zero-copy deserialization framework to achieve a significant speedup in dictionary loading. By memory-mapping the dictionary file, it can be made available for use almost instantaneously.
+`vibrato-rkyv` utilizes the [`rkyv`](https://rkyv.org/) zero-copy deserialization framework to achieve a significant speedup in dictionary loading. By memory-mapping (`mmap`) the dictionary file, the initialization overhead is virtually eliminated.
 
 The benchmark results below compare loading from both uncompressed and `zstd`-compressed files, demonstrating the performance difference.
 
@@ -19,43 +19,53 @@ OS: WSL2 (Ubuntu 24.04)
 Dictionary: UniDic-cwj v3.1.1 (approx. 700MB uncompressed dictionary binary)  
 Source: The benchmark code is available in the [benches](./vibrato/benches) directory.  
 
+`vibrato-rkyv` does not load the entire 700MB file into RAM upfront. It reads the first few bytes via a standard `read` syscall to verify the magic number, checks the file metadata, and then creates a virtual memory mapping (`mmap`). The actual dictionary data is lazy-loaded (demand-paged) by the OS only when the tokenizer accesses it.
+
+The benchmark states are defined as follows:
+*   **Warm Start (~4.8 µs):** The initial blocks and metadata are already in the OS page cache. The `read` syscall and `mmap` setup complete in microseconds without physical disk access.
+*   **Cold Start (~1.1 ms):** Measured after clearing the OS page cache (`sync; echo 3 > /proc/sys/vm/drop_caches`). The `read` syscall forces the OS to fetch the first block from the physical disk. The 1.1ms latency represents this initial disk I/O, not loading the entire 700MB file.
+*   **1st Run (~222 ms):** The first initialization without a trusted cache. It performs a full `rkyv` bytecheck validation, which pulls the entire 700MB file into memory.
+
 ### From Uncompressed File (`.dic`)
 
-The table below compares the performance of loading a dictionary from a pre-decompressed `.dic` file. The fastest possible speed is achieved with `from_path_unchecked`, while `from_path` with `LoadMode::TrustCache` provides a safe, near-instant alternative.
+The table below compares loading times from a `.dic` file. `from_path` with `LoadMode::TrustCache` provides a safe, near-instant initialization.
 
-| Condition | Original `vibrato` (Read from stream) | `vibrato-rkyv` (Memory-mapped) | Speedup |
+| State | Original `vibrato` (Read to RAM) | `vibrato-rkyv` (Memory-mapped) | Speedup |
 | :--- | :--- | :--- | :--- |
-| Cold Start (Cached)¹ | ~42 s | **~1.1 ms** | ~38,000x |
-| Warm Start (Unchecked)² | ~34 s | **~2.9 µs** | ~11,700,000x |
-| Warm Start (Cached)³ | ~34 s | **~4.1 µs** | ~8,300,000x |
+| **1st Run** (Full Validation) | ~34 s | **~222 ms** | ~150x |
+| **Cold Start** (Caches Dropped)¹ | ~42 s | **~1.1 ms** | ~38,000x |
+| **Warm Start** (TrustCache)² | ~34 s | **~4.8 µs** | ~7,000,000x |
+| **Warm Start** (Unchecked)³ | ~34 s | **~3.3 µs** | ~10,000,000x |
 
-This shows that the cache (metadata hashing and file check) adds a minimal overhead of just ~1.2 µs compared to the unsafe version.
-
-¹ **Cold Start (Cached)**: The file is not in the OS page cache, but the application cache (proof file) is valid. This measures the cost of disk I/O.  
-² **Warm Start (Unchecked)**: The fastest possible scenario using `from_path_unchecked`. The file is in the OS page cache, and bytechecks are bypassed.  
-³ **Warm Start (Cached)**: A typical fast reload scenario using `LoadMode::TrustCache`. The file is in the OS page cache, and minimal validation is performed.
+¹ **Cold Start**: Time to read the magic number and file metadata from the physical disk.  
+² **Warm Start (TrustCache)**: Fast reload scenario where the metadata is verified against a cached hash.  
+³ **Warm Start (Unchecked)**: Uses `from_path_unchecked`, bypassing metadata hash checks.
 
 ### From Zstd-Compressed File (`.dic.zst`)
 
-| Condition | Original `vibrato` (Read from stream) | `vibrato-rkyv` (with caching) | Speedup |
-| :--- | :--- | :--- | :--- |
-| 1st Run (Cold) | ~4.6 s | ~1.3 s | ~3.5x |
-| Subsequent Runs (Cache-hit) | ~4.5 s | ~6.5 μs | ~700,000x |
+For compressed dictionaries, `vibrato-rkyv` automatically decompresses the `.zst` file to a `.dic` cache file on the first run. Subsequent loads memory-map the uncompressed cache.
 
-<small>*`vibrato-rkyv` automatically decompresses and caches the dictionary on the first run, using the memory-mapped cache for subsequent loads.*</small>
+| State | Original `vibrato` (Decompress to RAM) | `vibrato-rkyv` (Decompress + Cache) | Speedup |
+| :--- | :--- | :--- | :--- |
+| **1st Run** (Decompress & Save) | ~4.6 s | **~2.15 s** | ~2x |
+| **Cold Start** (Load from Cache)¹ | ~4.6 s | **~1.3 ms** | ~3,500x |
+| **Warm Start** (Load from Cache)² | ~4.5 s | **~6.8 μs** | ~660,000x |
+
+¹ **Cold Start**: Initial `read` syscall latency for the generated cache file.  
+² **Warm Start**: The beginning of the cache file is in the OS page cache.
+
+### Usage
 
 To take advantage of this performance, use the `Dictionary::from_path` or `Dictionary::from_zstd` methods:
 
 ```rust
 use vibrato_rkyv::{Dictionary, LoadMode};
 
-// Recommended for uncompressed dictionaries:
-// Almost instantaneous loading via memory-mapping.
+// For uncompressed dictionaries:
 let dict_mmap = Dictionary::from_path("path/to/system.dic", LoadMode::TrustCache)?;
 
-// Recommended for zstd-compressed dictionaries:
-// Decompresses and caches on the first run, then uses memory-mapping.
-let dict_zstd = Dictionary::from_zstd("path/to/system.dic.zst", CacheStrategy::Local)?;
+// For zstd-compressed dictionaries (decompresses and caches on first run):
+let dict_zstd = Dictionary::from_zstd("path/to/system.dic.zst", vibrato_rkyv::CacheStrategy::Local)?;
 ```
 
 ## Differences
