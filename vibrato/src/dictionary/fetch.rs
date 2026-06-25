@@ -37,6 +37,8 @@ pub(crate) fn download_dictionary<P: AsRef<Path>>(
         return Ok(dict_path);
     }
 
+    fs::create_dir_all(dest_dir)?;
+
     let _thread_guard = DICT_LOCK.lock().expect("Poisoned");
 
     let lock_file_path = dest_dir.join(".lock");
@@ -61,8 +63,6 @@ pub(crate) fn download_dictionary<P: AsRef<Path>>(
     {
         return Ok(dict_path);
     }
-
-    fs::create_dir_all(dest_dir)?;
 
     let archive_path = match preset_meta.file_type {
         FileType::Tar => dest_dir.join(format!("{}.tar", preset_meta.name)),
