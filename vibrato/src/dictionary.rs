@@ -60,13 +60,11 @@ const DATA_START: usize = MODEL_MAGIC_LEN + PADDING_LEN;
 /// Prefix of magic bytes for legacy bincode-based models.
 pub const LEGACY_MODEL_MAGIC_PREFIX: &[u8] = b"VibratoTokenizer 0.";
 
-pub static GLOBAL_CACHE_DIR: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
-    dirs::cache_dir().map(|p| p.join("vibrato-rkyv"))
-});
+pub static GLOBAL_CACHE_DIR: LazyLock<Option<PathBuf>> =
+    LazyLock::new(|| dirs::cache_dir().map(|p| p.join("vibrato-rkyv")));
 
-pub static GLOBAL_DATA_DIR: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
-    dirs::data_local_dir().map(|p| p.join("vibrato-rkyv"))
-});
+pub static GLOBAL_DATA_DIR: LazyLock<Option<PathBuf>> =
+    LazyLock::new(|| dirs::data_local_dir().map(|p| p.join("vibrato-rkyv")));
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum LoadMode {
@@ -127,6 +125,7 @@ pub struct DictionaryInner {
 enum DictBuffer {
     Mmap(Mmap),
     Aligned(AlignedVec<16>),
+    Unowned,
 }
 
 /// A read-only dictionary for tokenization, loaded via zero-copy deserialization.
@@ -739,6 +738,172 @@ impl Dictionary {
             _buffer: DictBuffer::Mmap(mmap),
             data,
         }))
+    }
+
+    /// Creates a dictionary from a byte slice by loading all data into a heap buffer.
+    ///
+    /// This function copies the data into an aligned buffer for `rkyv` deserialization.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - A byte slice containing the serialized dictionary data.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the data is invalid, truncated, or has a mismatched magic number.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() < DATA_START {
+            return Err(VibratoError::invalid_argument("bytes", "Data too short."));
+        }
+
+        let magic = &bytes[..MODEL_MAGIC_LEN];
+        if magic.starts_with(LEGACY_MODEL_MAGIC_PREFIX) {
+            return Err(VibratoError::invalid_argument(
+                "bytes",
+                "This appears to be a legacy bincode-based dictionary file. Please use a dictionary compiled for the rkyv version of vibrato.",
+            ));
+        } else if !magic.starts_with(MODEL_MAGIC) {
+            return Err(VibratoError::invalid_argument(
+                "bytes",
+                "The magic number of the input model mismatches.",
+            ));
+        }
+
+        let data_bytes = &bytes[DATA_START..];
+
+        let mut aligned_bytes = AlignedVec::with_capacity(data_bytes.len());
+        aligned_bytes.extend_from_slice(data_bytes);
+
+        let archived = access::<ArchivedDictionaryInner, Error>(&aligned_bytes).map_err(|e| {
+            VibratoError::invalid_state(
+                "rkyv validation failed. The dictionary file may be corrupted or incompatible."
+                    .to_string(),
+                e.to_string(),
+            )
+        })?;
+
+        let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
+
+        Ok(Self::Archived(ArchivedDictionary {
+            _buffer: DictBuffer::Aligned(aligned_bytes),
+            data,
+        }))
+    }
+
+    /// Creates a dictionary from a static byte slice.
+    ///
+    /// If the provided byte slice is properly aligned to 16 bytes, this function
+    /// skips allocation and directly references the data. Otherwise, it copies
+    /// the data into a properly aligned heap buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - A static byte slice containing the serialized dictionary data.
+    pub fn from_static_bytes(bytes: &'static [u8]) -> Result<Self> {
+        if bytes.len() < DATA_START {
+            return Err(VibratoError::invalid_argument("bytes", "Data too short."));
+        }
+
+        let magic = &bytes[..MODEL_MAGIC_LEN];
+        if magic.starts_with(LEGACY_MODEL_MAGIC_PREFIX) {
+            return Err(VibratoError::invalid_argument(
+                "bytes",
+                "This appears to be a legacy bincode-based dictionary file. Please use a dictionary compiled for the rkyv version of vibrato.",
+            ));
+        } else if !magic.starts_with(MODEL_MAGIC) {
+            return Err(VibratoError::invalid_argument(
+                "bytes",
+                "The magic number of the input model mismatches.",
+            ));
+        }
+
+        let data_bytes = &bytes[DATA_START..];
+        let is_aligned = (data_bytes.as_ptr() as usize).is_multiple_of(RKYV_ALIGNMENT);
+
+        if is_aligned {
+            let archived = access::<ArchivedDictionaryInner, Error>(data_bytes).map_err(|e| {
+                VibratoError::invalid_state("rkyv validation failed.".to_string(), e.to_string())
+            })?;
+
+            let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
+            Ok(Self::Archived(ArchivedDictionary {
+                _buffer: DictBuffer::Unowned,
+                data,
+            }))
+        } else {
+            let mut aligned_bytes = AlignedVec::with_capacity(data_bytes.len());
+            aligned_bytes.extend_from_slice(data_bytes);
+
+            let archived =
+                access::<ArchivedDictionaryInner, Error>(&aligned_bytes).map_err(|e| {
+                    VibratoError::invalid_state(
+                        "rkyv validation failed.".to_string(),
+                        e.to_string(),
+                    )
+                })?;
+
+            let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
+            Ok(Self::Archived(ArchivedDictionary {
+                _buffer: DictBuffer::Aligned(aligned_bytes),
+                data,
+            }))
+        }
+    }
+
+    /// Creates a dictionary from a byte slice without validation.
+    ///
+    /// If the byte slice is properly aligned to 16 bytes, it skips allocation and
+    /// directly borrows the provided data. Otherwise, it copies the data into an aligned buffer.
+    ///
+    /// # Safety
+    ///
+    /// This function is highly unsafe:
+    /// - It bypasses `rkyv`'s data validation steps. The caller must ensure the data is valid.
+    /// - If the data is aligned, no allocation occurs and the returned `Dictionary` will
+    ///   **directly reference the memory of the `bytes` argument**. The caller MUST ensure
+    ///   that the original `bytes` slice outlives the `Dictionary` instance. Dropping the
+    ///   underlying data while the `Dictionary` is still in use will cause a Use-After-Free.
+    pub unsafe fn from_bytes_unchecked(bytes: &'static [u8]) -> Result<Self> {
+        if bytes.len() < DATA_START {
+            return Err(VibratoError::invalid_argument("bytes", "Data too short."));
+        }
+
+        let magic = &bytes[..MODEL_MAGIC_LEN];
+        if magic.starts_with(LEGACY_MODEL_MAGIC_PREFIX) {
+            return Err(VibratoError::invalid_argument(
+                "bytes",
+                "This appears to be a legacy bincode-based dictionary file.",
+            ));
+        } else if !magic.starts_with(MODEL_MAGIC) {
+            return Err(VibratoError::invalid_argument(
+                "bytes",
+                "The magic number of the input model mismatches.",
+            ));
+        }
+
+        let data_bytes = &bytes[DATA_START..];
+        let is_aligned = (data_bytes.as_ptr() as usize).is_multiple_of(RKYV_ALIGNMENT);
+
+        if is_aligned {
+            let archived = unsafe { access_unchecked::<ArchivedDictionaryInner>(data_bytes) };
+            let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
+
+            Ok(Self::Archived(ArchivedDictionary {
+                _buffer: DictBuffer::Unowned,
+                data,
+            }))
+        } else {
+            let mut aligned_bytes = AlignedVec::with_capacity(data_bytes.len());
+            aligned_bytes.extend_from_slice(data_bytes);
+
+            let archived = unsafe { access_unchecked::<ArchivedDictionaryInner>(&aligned_bytes) };
+            let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
+
+            Ok(Self::Archived(ArchivedDictionary {
+                _buffer: DictBuffer::Aligned(aligned_bytes),
+                data,
+            }))
+        }
     }
 
     /// Loads a dictionary from a Zstandard-compressed file using a specified caching strategy.
