@@ -1,6 +1,6 @@
 [package]
 name = "vibrato-rkyv"
-version = "0.7.14"
+version = "0.7.15"
 edition = "2024"
 authors = [
     "o24s <fulmlumo@gmail.com>",
