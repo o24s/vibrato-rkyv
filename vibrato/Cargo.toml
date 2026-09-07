@@ -19,7 +19,7 @@ categories = ["text-processing"]
 bumpalo = "3.20.3"
 csv-core = "0.1.13"
 digest-io = "0.1.0"
-dirs = "6.0.0"
+dirs = "7.0.0"
 fs4 = { version = "1.1.0", features = ["sync"] }
 hashbrown = "0.17.1"
 hex = "0.4.3"
@@ -33,7 +33,7 @@ tempfile = "3.27.0"
 thiserror = "2.0.18"
 walkdir = { version = "2.5.0", optional = true }
 xz2 = { version = "0.1.7", optional = true }
-zstd = "0.13.3"
+zstd = "0.14.0"
 
 rkyv = { version = "0.8.16", features = ["hashbrown-0_17"] }
 crawdad-rkyv = "0.4.0-rkyv.3"

@@ -89,7 +89,7 @@ impl UnkHandler {
             grouped = true;
             // Checks the number of grouped characters other than the first one
             // following the original MeCab implementation.
-            let max_grouping_len = max_grouping_len.map_or(MAX_SENTENCE_LENGTH, |l| l);
+            let max_grouping_len = max_grouping_len.unwrap_or(MAX_SENTENCE_LENGTH);
             // Note: Do NOT write `max_grouping_len+1` to avoid overflow.
             if groupable - 1 <= max_grouping_len {
                 f = self.scan_entries(start_char, start_char + groupable, cinfo, f);
@@ -287,7 +287,7 @@ impl ArchivedUnkHandler {
             grouped = true;
             // Checks the number of grouped characters other than the first one
             // following the original MeCab implementation.
-            let max_grouping_len = max_grouping_len.map_or(MAX_SENTENCE_LENGTH, |l| l);
+            let max_grouping_len = max_grouping_len.unwrap_or(MAX_SENTENCE_LENGTH);
             // Note: Do NOT write `max_grouping_len+1` to avoid overflow.
             if groupable - 1 <= max_grouping_len {
                 f = self.scan_entries(start_char, start_char + groupable, cinfo, f);
