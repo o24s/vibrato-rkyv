@@ -17,6 +17,7 @@ use crate::tokenizer::worker::Worker;
 #[derive(Clone)]
 pub struct Tokenizer {
     dict: Arc<Dictionary>,
+    user_lexicon: Option<Arc<crate::dictionary::lexicon::Lexicon>>,
     // For the MeCab compatibility
     space_cateset: Option<u32>,
     max_grouping_len: Option<usize>,
@@ -35,10 +36,42 @@ impl Tokenizer {
     pub fn new(dict: Dictionary) -> Self {
         Self {
             dict: Arc::new(dict),
+            user_lexicon: None,
             space_cateset: None,
             max_grouping_len: None,
             prefer_dictionary_on_tie: false,
         }
+    }
+
+    /// システム辞書を共有したまま、追加するユーザー辞書を CSV から構築します。
+    /// 既存のワーカーは変更前の辞書を使い続けます。
+    pub fn with_user_lexicon<R: std::io::Read>(mut self, reader: R) -> Result<Self> {
+        self.user_lexicon = Some(Arc::new(self.dict.prepare_user_lexicon(reader)?));
+        Ok(self)
+    }
+
+    pub(crate) fn word_feature(&self, index: crate::dictionary::word_idx::WordIdx) -> &str {
+        if index.lex_type == crate::dictionary::LexType::User
+            && let Some(lexicon) = &self.user_lexicon
+        {
+            return lexicon.word_feature(index);
+        }
+        match self.dictionary() {
+            DictionaryInnerRef::Archived(d) => d.word_feature(index),
+            DictionaryInnerRef::Owned(d) => d.word_feature(index),
+        }
+    }
+
+    pub(crate) fn word_param(
+        &self,
+        index: crate::dictionary::word_idx::WordIdx,
+    ) -> crate::dictionary::lexicon::WordParam {
+        if index.lex_type == crate::dictionary::LexType::User
+            && let Some(lexicon) = &self.user_lexicon
+        {
+            return lexicon.word_param(index);
+        }
+        self.dictionary().word_param(index)
     }
 
     /// Prefers dictionary tokens over unknown tokens with the same span and tied path costs.
@@ -56,6 +89,7 @@ impl Tokenizer {
                 dict: Arc::new(dict),
                 _caching_handle: None,
             }),
+            user_lexicon: None,
             space_cateset: None,
             max_grouping_len: None,
             prefer_dictionary_on_tie: false,
@@ -70,6 +104,7 @@ impl Tokenizer {
     pub fn from_shared_dictionary(dict: Arc<Dictionary>) -> Self {
         Self {
             dict,
+            user_lexicon: None,
             space_cateset: None,
             max_grouping_len: None,
             prefer_dictionary_on_tie: false,
@@ -286,7 +321,20 @@ macro_rules! add_lattice_edges_logic {
         let mut has_matched = false;
         let suffix = &$sent.chars()[$start_word..];
 
-        if let Some(user_lexicon) = $dict.user_lexicon().as_ref() {
+        if let Some(user_lexicon) = $self.user_lexicon.as_ref() {
+            for m in user_lexicon.common_prefix_iterator(suffix) {
+                debug_assert!($start_word + m.end_char <= $sent.len_char());
+                $lattice.insert_node(
+                    $start_node,
+                    $start_word,
+                    $start_word + m.end_char,
+                    m.word_idx,
+                    m.word_param,
+                    $connector,
+                );
+                has_matched = true;
+            }
+        } else if let Some(user_lexicon) = $dict.user_lexicon().as_ref() {
             for m in user_lexicon.common_prefix_iterator(suffix) {
                 debug_assert!($start_word + m.end_char <= $sent.len_char());
                 $lattice.insert_node(

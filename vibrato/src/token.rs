@@ -1,7 +1,6 @@
 //! Container of resultant tokens.
 use std::ops::Range;
 
-use crate::dictionary::DictionaryInnerRef;
 use crate::dictionary::{LexType, word_idx::WordIdx};
 use crate::tokenizer::lattice::Node;
 use crate::tokenizer::worker::Worker;
@@ -49,10 +48,7 @@ impl<'w> Token<'w> {
     /// Gets the feature string of the token.
     #[inline(always)]
     pub fn feature(&self) -> &str {
-        match self.worker.tokenizer.dictionary() {
-            DictionaryInnerRef::Archived(dict) => dict.word_feature(self.word_idx()),
-            DictionaryInnerRef::Owned(dict) => dict.word_feature(self.word_idx()),
-        }
+        self.worker.tokenizer.word_feature(self.word_idx())
     }
 
     /// Gets the lexicon type where the token is from.
@@ -79,10 +75,7 @@ impl<'w> Token<'w> {
     #[inline(always)]
     pub fn word_cost(&self) -> i16 {
         let (_, node) = &self.worker.top_nodes[self.index];
-        match self.worker.tokenizer.dictionary() {
-            DictionaryInnerRef::Archived(dict) => dict.word_param(node.word_idx()).word_cost,
-            DictionaryInnerRef::Owned(dict) => dict.word_param(node.word_idx()).word_cost,
-        }
+        self.worker.tokenizer.word_param(node.word_idx()).word_cost
     }
 
     /// Gets the total cost from BOS to the token's node.
@@ -165,10 +158,7 @@ impl<'w> NbestToken<'w> {
     /// Gets the feature string of the token.
     #[inline(always)]
     pub fn feature(&self) -> &'w str {
-        match self.worker.tokenizer.dictionary() {
-            DictionaryInnerRef::Archived(dict) => dict.word_feature(self.word_idx()),
-            DictionaryInnerRef::Owned(dict) => dict.word_feature(self.word_idx()),
-        }
+        self.worker.tokenizer.word_feature(self.word_idx())
     }
 
     /// Gets the position range of the token in characters.
@@ -211,7 +201,7 @@ impl<'w> NbestToken<'w> {
     /// Gets the word cost of the token's node.
     #[inline(always)]
     pub fn word_cost(&self) -> i16 {
-        let dict = self.worker.tokenizer.dictionary();
+        let dict = &self.worker.tokenizer;
         dict.word_param(self.word_idx()).word_cost
     }
 

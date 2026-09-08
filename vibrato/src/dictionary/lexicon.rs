@@ -8,7 +8,7 @@ use csv_core::ReadFieldResult;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::dictionary::LexType;
-use crate::dictionary::connector::Connector;
+use crate::dictionary::connector::ConnectorView;
 use crate::dictionary::lexicon::feature::WordFeatures;
 use crate::dictionary::lexicon::map::WordMap;
 use crate::dictionary::lexicon::param::WordParams;
@@ -67,7 +67,7 @@ impl Lexicon {
     /// Checks if left/right-ids are valid with connector.
     pub fn verify<C>(&self, conn: &C) -> bool
     where
-        C: Connector,
+        C: ConnectorView,
     {
         for i in 0..self.params.len() {
             let p = self.params.get(i);

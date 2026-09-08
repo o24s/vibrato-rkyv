@@ -96,10 +96,10 @@ impl Worker {
 
         let generator = match connector_ref {
             ConnectorKindRef::Archived(connector) => {
-                NbestGenerator::new(lattice_nbest, connector, dict_ref)
+                NbestGenerator::new(lattice_nbest, connector, &self.tokenizer)
             }
             ConnectorKindRef::Owned(connector) => {
-                NbestGenerator::new(lattice_nbest, connector, dict_ref)
+                NbestGenerator::new(lattice_nbest, connector, &self.tokenizer)
             }
         };
         self.nbest_paths = generator.take(n).collect();
@@ -255,14 +255,8 @@ impl Worker {
         let mut nodes: Vec<_> = lattice
             .nodes()
             .map(|(end, node)| {
-                let feature = match dict {
-                    DictionaryInnerRef::Owned(d) => d.word_feature(node.word_idx()),
-                    DictionaryInnerRef::Archived(d) => d.word_feature(node.word_idx()),
-                };
-                let param = match dict {
-                    DictionaryInnerRef::Owned(d) => d.word_param(node.word_idx()),
-                    DictionaryInnerRef::Archived(d) => d.word_param(node.word_idx()),
-                };
+                let feature = self.tokenizer.word_feature(node.word_idx());
+                let param = self.tokenizer.word_param(node.word_idx());
                 LatticeCandidate {
                     start_node: node.start_node,
                     range_char: node.start_word..end,

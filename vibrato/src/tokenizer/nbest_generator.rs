@@ -3,8 +3,8 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::rc::Rc;
 
+use super::Tokenizer;
 use super::lattice::Node;
-use crate::dictionary::DictionaryInnerRef;
 use crate::dictionary::connector::ConnectorCost;
 use crate::tokenizer::lattice::LatticeNBest;
 
@@ -57,14 +57,14 @@ impl Ord for QueueItem {
 pub struct NbestGenerator<'a> {
     queue: BinaryHeap<QueueItem>,
     connector: &'a dyn ConnectorCost,
-    dictionary: DictionaryInnerRef<'a>,
+    dictionary: &'a Tokenizer,
 }
 
 impl<'a> NbestGenerator<'a> {
     pub fn new(
         lattice: &'a LatticeNBest,
         connector: &'a dyn ConnectorCost,
-        dictionary: DictionaryInnerRef<'a>,
+        dictionary: &'a Tokenizer,
     ) -> Self {
         let mut queue = BinaryHeap::new();
         if let Some(eos_node) = lattice.eos_node() {

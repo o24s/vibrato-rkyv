@@ -743,3 +743,72 @@ fn dictionary_preference_is_opt_in_for_tied_costs() {
         assert!(snapshot.nodes.iter().all(|n| n.delta == 0));
     }
 }
+
+#[test]
+fn archived_system_accepts_independent_user_lexicon() {
+    let inner = SystemDictionaryBuilder::from_readers(
+        LEX_CSV.as_bytes(),
+        MATRIX_DEF.as_bytes(),
+        CHAR_DEF.as_bytes(),
+        UNK_DEF.as_bytes(),
+    )
+    .unwrap();
+    let mut bytes = Vec::new();
+    inner.write(&mut bytes).unwrap();
+    let base = Tokenizer::new(Dictionary::from_bytes(&bytes).unwrap());
+    let updated = base.clone().with_user_lexicon(USER_CSV.as_bytes()).unwrap();
+    let reference = Tokenizer::from_inner(
+        inner
+            .reset_user_lexicon_from_reader(Some(USER_CSV.as_bytes()))
+            .unwrap(),
+    );
+    let mut original = base.new_worker();
+    original.reset_sentence("京都東京都京都");
+    original.tokenize();
+    assert_eq!(original.num_tokens(), 3);
+    let mut actual = updated.new_worker();
+    let mut expected = reference.new_worker();
+    for worker in [&mut actual, &mut expected] {
+        worker.reset_sentence("京都東京都京都");
+        worker.tokenize();
+    }
+    assert_eq!(actual.num_tokens(), 2);
+    assert_eq!(
+        actual
+            .token_iter()
+            .map(|t| (t.feature().to_owned(), t.word_cost()))
+            .collect::<Vec<_>>(),
+        expected
+            .token_iter()
+            .map(|t| (t.feature().to_owned(), t.word_cost()))
+            .collect::<Vec<_>>()
+    );
+    let snapshot = actual.lattice_snapshot().unwrap();
+    assert!(
+        snapshot
+            .nodes
+            .iter()
+            .any(|n| n.feature == actual.token(0).feature())
+    );
+    actual.tokenize_nbest(3);
+    expected.tokenize_nbest(3);
+    assert_eq!(actual.num_nbest_paths(), expected.num_nbest_paths());
+    for path in 0..actual.num_nbest_paths() {
+        assert_eq!(
+            actual
+                .nbest_token_iter(path)
+                .unwrap()
+                .map(|t| (t.feature().to_owned(), t.word_cost()))
+                .collect::<Vec<_>>(),
+            expected
+                .nbest_token_iter(path)
+                .unwrap()
+                .map(|t| (t.feature().to_owned(), t.word_cost()))
+                .collect::<Vec<_>>()
+        );
+    }
+    assert!(
+        base.with_user_lexicon("a,65535,65535,0,invalid\n".as_bytes())
+            .is_err()
+    );
+}

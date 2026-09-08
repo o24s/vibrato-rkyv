@@ -356,6 +356,34 @@ impl DictionaryInner {
 }
 
 impl Dictionary {
+    pub(crate) fn prepare_user_lexicon<R: Read>(&self, reader: R) -> Result<Lexicon> {
+        let mut lexicon = Lexicon::from_reader(reader, LexType::User)?;
+        let valid = match self {
+            Self::Owned { dict, .. } => lexicon.verify(dict.connector()),
+            Self::Archived(dict) => lexicon.verify(dict.connector()),
+        };
+        if !valid {
+            return Err(VibratoError::invalid_argument(
+                "user_lexicon",
+                "includes invalid connection ids",
+            ));
+        }
+        match self {
+            Self::Owned { dict, .. } => {
+                if let Some(mapper) = &dict.mapper {
+                    lexicon.map_connection_ids(mapper);
+                }
+            }
+            Self::Archived(dict) => {
+                if let Some(mapper) = dict.mapper.as_ref() {
+                    let mapper: ConnIdMapper = rkyv::deserialize::<_, rkyv::rancor::Error>(mapper)?;
+                    lexicon.map_connection_ids(&mapper);
+                }
+            }
+        }
+        Ok(lexicon)
+    }
+
     /// Creates a dictionary from `DictionaryInner`.
     pub fn from_inner(dict: DictionaryInner) -> Self {
         Self::Owned {
