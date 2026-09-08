@@ -53,3 +53,12 @@ impl ArchivedTrie {
             .map(move |(value, end_char)| TrieMatch::new(value, end_char))
     }
 }
+
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::lexicon::map::trie::Trie> for Trie {
+    fn from(old: crate::legacy::dictionary::lexicon::map::trie::Trie) -> Self {
+        Self {
+            da: crawdad_rkyv::Trie::deserialize_from_slice(&old.da.serialize_to_vec()).0,
+        }
+    }
+}

@@ -4,8 +4,7 @@ use std::io::{prelude::*, BufReader};
 use std::path::PathBuf;
 
 use rkyv::{access, deserialize, rancor::Error as RError};
-use vibrato_rkyv::dictionary::ArchivedDictionaryInner;
-use vibrato_rkyv::dictionary::{DictionaryInner, MODEL_MAGIC};
+use vibrato_rkyv::dictionary::{ArchivedDictionaryInner, DictionaryInner, MODEL_MAGIC};
 
 use clap::Parser;
 
@@ -34,14 +33,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     eprintln!("Loading and deserializing the dictionary...");
     let mut reader = zstd::Decoder::new(File::open(args.sysdic_in)?)?;
-    let mut magic = [0; MODEL_MAGIC.len()];
-    reader.read_exact(&mut magic)?;
-    if magic != MODEL_MAGIC {
+    let mut header = [0u8; 32];
+    reader.read_exact(&mut header)?;
+    if &header[..MODEL_MAGIC.len()] != MODEL_MAGIC {
         return Err("The magic number of the input model mismatches.".into());
     }
-    let mut dict_bytes = vec![];
-    reader.read_to_end(&mut dict_bytes)?;
-
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes)?;
+    let mut dict_bytes = rkyv::util::AlignedVec::<16>::new();
+    dict_bytes.extend_from_slice(&bytes);
     let archived = access::<ArchivedDictionaryInner, RError>(&dict_bytes)?;
     let mut dict_inner: DictionaryInner = deserialize::<_, RError>(archived)?;
 

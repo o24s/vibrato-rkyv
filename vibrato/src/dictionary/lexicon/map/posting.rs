@@ -53,3 +53,10 @@ impl ArchivedPostings {
         self.data[i + 1..i + 1 + len].iter().cloned()
     }
 }
+
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::lexicon::map::posting::Postings> for Postings {
+    fn from(old: crate::legacy::dictionary::lexicon::map::posting::Postings) -> Self {
+        Self { data: old.data }
+    }
+}

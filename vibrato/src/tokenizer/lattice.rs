@@ -17,6 +17,7 @@ pub struct Node {
     pub lex_type: LexType,
     pub start_node: usize,
     pub start_word: usize,
+    pub end_word: usize,
     pub left_id: u16,
     pub right_id: u16,
     pub min_idx: u16,
@@ -42,6 +43,7 @@ impl Default for Node {
             lex_type: LexType::System,
             start_node: 0,
             start_word: 0,
+            end_word: 0,
             left_id: 0,
             right_id: 0,
             min_idx: 0,
@@ -78,6 +80,7 @@ pub enum LatticeKind {
 /// This implementation inspired by sudachi.rs.
 #[derive(Default)]
 pub struct Lattice {
+    pub(super) prefer_dictionary_on_tie: bool,
     ends: Vec<Vec<Node>>,
     eos: Option<Node>,
     len_char: usize, // needed for avoiding to free ends
@@ -114,6 +117,19 @@ impl LatticeKind {
 }
 
 impl Lattice {
+    pub(crate) fn nodes(&self) -> impl Iterator<Item = (usize, &Node)> {
+        self.ends
+            .iter()
+            .enumerate()
+            .skip(1)
+            .take(self.len_char)
+            .flat_map(|(end, nodes)| nodes.iter().map(move |node| (end, node)))
+    }
+
+    pub(crate) fn eos(&self) -> Option<&Node> {
+        self.eos.as_ref()
+    }
+
     pub fn reset(&mut self, len_char: usize) {
         Self::reset_vec(&mut self.ends, len_char + 1);
         self.len_char = len_char;
@@ -146,6 +162,7 @@ impl Lattice {
             lex_type: LexType::default(),
             start_node: MAX_SENTENCE_LENGTH,
             start_word: MAX_SENTENCE_LENGTH,
+            end_word: 0,
             left_id: u16::MAX,
             right_id: BOS_EOS_CONNECTION_ID,
             min_idx: INVALID_IDX,
@@ -165,6 +182,7 @@ impl Lattice {
             lex_type: LexType::default(),
             start_node,
             start_word: self.len_char(),
+            end_word: self.len_char(),
             left_id: BOS_EOS_CONNECTION_ID,
             right_id: u16::MAX,
             min_idx,
@@ -192,6 +210,7 @@ impl Lattice {
             lex_type: word_idx.lex_type,
             start_node,
             start_word,
+            end_word,
             left_id: word_param.left_id,
             right_id: word_param.right_id,
             min_idx,
@@ -214,7 +233,16 @@ impl Lattice {
             let new_cost = left_node.min_cost + conn_cost;
             // Depending on the order of tie-breaking, the result can be different from MeCab.
             // Using <= (not <) will produce results identical to MeCab in most case (empirically).
-            if new_cost <= min_cost {
+            let prefer_previous = self.prefer_dictionary_on_tie
+                && new_cost == min_cost
+                && min_idx != INVALID_IDX
+                && {
+                    let previous = &self.ends[start_node][usize::from(min_idx)];
+                    left_node.start_node == previous.start_node
+                        && left_node.lex_type == LexType::Unknown
+                        && previous.lex_type != LexType::Unknown
+                };
+            if new_cost <= min_cost && !prefer_previous {
                 min_idx = i as u16;
                 min_cost = new_cost;
             }
@@ -307,6 +335,7 @@ impl LatticeNBest {
             lex_type: LexType::default(),
             start_node: MAX_SENTENCE_LENGTH,
             start_word: MAX_SENTENCE_LENGTH,
+            end_word: 0,
             left_id: u16::MAX,
             right_id: BOS_EOS_CONNECTION_ID,
             min_idx: INVALID_IDX,
@@ -322,6 +351,7 @@ impl LatticeNBest {
             lex_type: LexType::default(),
             start_node,
             start_word: self.len_char(),
+            end_word: self.len_char(),
             left_id: BOS_EOS_CONNECTION_ID,
             right_id: u16::MAX,
             ..Default::default()
@@ -368,6 +398,7 @@ impl LatticeNBest {
             lex_type: word_idx.lex_type,
             start_node: start_node_pos,
             start_word,
+            end_word,
             left_id: word_param.left_id,
             right_id: word_param.right_id,
             ..Default::default()

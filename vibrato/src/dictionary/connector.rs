@@ -99,3 +99,15 @@ impl ConnectorCost for ArchivedConnectorWrapper {
         }
     }
 }
+
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::connector::ConnectorWrapper> for ConnectorWrapper {
+    fn from(old: crate::legacy::dictionary::connector::ConnectorWrapper) -> Self {
+        use crate::legacy::dictionary::connector::ConnectorWrapper as Old;
+        match old {
+            Old::Matrix(x) => Self::Matrix(x.into()),
+            Old::Raw(x) => Self::Raw(x.into()),
+            Old::Dual(x) => Self::Dual(x.into()),
+        }
+    }
+}

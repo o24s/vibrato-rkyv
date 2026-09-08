@@ -8,6 +8,6 @@ use crate::legacy::dictionary::lexicon::map::trie::Trie;
 
 #[derive(Decode, Encode)]
 pub struct WordMap {
-    trie: Trie,
-    postings: Postings,
+    pub(crate) trie: Trie,
+    pub(crate) postings: Postings,
 }

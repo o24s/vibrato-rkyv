@@ -84,3 +84,13 @@ impl ArchivedWordMap {
         })
     }
 }
+
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::lexicon::map::WordMap> for WordMap {
+    fn from(old: crate::legacy::dictionary::lexicon::map::WordMap) -> Self {
+        Self {
+            trie: old.trie.into(),
+            postings: old.postings.into(),
+        }
+    }
+}

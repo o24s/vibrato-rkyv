@@ -553,14 +553,7 @@ impl Dictionary {
 
                 let dict = legacy::Dictionary::read(file)?.data;
 
-                let dict = unsafe {
-                    use std::mem::transmute;
-
-                    Arc::new(transmute::<
-                        legacy::dictionary::DictionaryInner,
-                        DictionaryInner,
-                    >(dict))
-                };
+                let dict = Arc::new(DictionaryInner::from(dict));
 
                 return Ok(Self::Owned {
                     dict,
@@ -702,14 +695,7 @@ impl Dictionary {
 
                 let dict = legacy::Dictionary::read(file)?.data;
 
-                let dict = unsafe {
-                    use std::mem::transmute;
-
-                    Arc::new(transmute::<
-                        legacy::dictionary::DictionaryInner,
-                        DictionaryInner,
-                    >(dict))
-                };
+                let dict = Arc::new(DictionaryInner::from(dict));
 
                 return Ok(Self::Owned {
                     dict,
@@ -1077,14 +1063,7 @@ impl Dictionary {
 
             let dict = legacy::Dictionary::read(zstd::Decoder::new(File::open(zstd_path)?)?)?.data;
 
-            let dict = unsafe {
-                use std::mem::transmute;
-
-                Arc::new(transmute::<
-                    legacy::dictionary::DictionaryInner,
-                    DictionaryInner,
-                >(dict))
-            };
+            let dict = Arc::new(DictionaryInner::from(dict));
 
             let dict_for_cache = Arc::clone(&dict);
             let handle = thread::spawn(move || -> Result<()> {
@@ -1181,18 +1160,13 @@ impl Dictionary {
     ///
     /// # Safety
     ///
-    /// This function is `unsafe` because it uses [`std::mem::transmute`] to cast
-    /// the dictionary structure deserialized with `bincode`.
-    /// It is currently safe as this fork maintains an identical memory layout.
+    /// Legacy input must come from a trusted dictionary producer. Its trie decoder
+    /// predates structural validation and is not suitable for untrusted input.
     #[cfg(feature = "legacy")]
     pub unsafe fn from_legacy_reader<R: std::io::Read>(reader: R) -> Result<Self> {
         let legacy_dict_inner = crate::legacy::Dictionary::read(reader)?.data;
 
-        let rkyv_dict_inner = unsafe {
-            std::mem::transmute::<crate::legacy::dictionary::DictionaryInner, DictionaryInner>(
-                legacy_dict_inner,
-            )
-        };
+        let rkyv_dict_inner = DictionaryInner::from(legacy_dict_inner);
 
         Ok(Self::Owned {
             dict: Arc::new(rkyv_dict_inner),
@@ -1509,6 +1483,31 @@ impl ArchivedDictionaryInner {
             LexType::System => self.system_lexicon().word_feature(word_idx),
             LexType::User => self.user_lexicon().as_ref().unwrap().word_feature(word_idx),
             LexType::Unknown => self.unk_handler().word_feature(word_idx),
+        }
+    }
+}
+
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::LexType> for LexType {
+    fn from(old: crate::legacy::dictionary::LexType) -> Self {
+        use crate::legacy::dictionary::LexType as Old;
+        match old {
+            Old::System => Self::System,
+            Old::User => Self::User,
+            Old::Unknown => Self::Unknown,
+        }
+    }
+}
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::DictionaryInner> for DictionaryInner {
+    fn from(old: crate::legacy::dictionary::DictionaryInner) -> Self {
+        Self {
+            system_lexicon: old.system_lexicon.into(),
+            user_lexicon: old.user_lexicon.map(Into::into),
+            connector: old.connector.into(),
+            mapper: old.mapper.map(Into::into),
+            char_prop: old.char_prop.into(),
+            unk_handler: old.unk_handler.into(),
         }
     }
 }

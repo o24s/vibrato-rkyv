@@ -14,3 +14,6 @@ rkyv = "0.8.16"
 [[bin]]
 name = "reorder"
 path = "src/reorder.rs"
+
+[dev-dependencies]
+tempfile = "3.27.0"

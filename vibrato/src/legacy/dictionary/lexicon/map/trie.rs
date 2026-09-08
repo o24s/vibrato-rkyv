@@ -8,7 +8,7 @@ use bincode::{
 use crate::legacy::errors::Result;
 
 pub struct Trie {
-    da: crawdad::Trie,
+    pub(crate) da: crawdad::Trie,
 }
 
 impl Encode for Trie {

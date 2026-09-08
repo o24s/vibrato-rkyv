@@ -359,6 +359,18 @@ impl ConnectorCost for ArchivedRawConnector {
     }
 }
 
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::connector::raw_connector::RawConnector> for RawConnector {
+    fn from(old: crate::legacy::dictionary::connector::raw_connector::RawConnector) -> Self {
+        Self {
+            right_feat_ids: old.right_feat_ids.into_iter().map(Into::into).collect(),
+            left_feat_ids: old.left_feat_ids.into_iter().map(Into::into).collect(),
+            feat_template_size: old.feat_template_size,
+            scorer: old.scorer.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

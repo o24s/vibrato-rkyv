@@ -9,5 +9,5 @@ pub struct WordParam {
 
 #[derive(Decode, Encode)]
 pub struct WordParams {
-    params: Vec<WordParam>,
+    pub(crate) params: Vec<WordParam>,
 }

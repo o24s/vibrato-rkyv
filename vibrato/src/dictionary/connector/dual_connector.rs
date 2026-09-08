@@ -308,6 +308,20 @@ impl ConnectorCost for ArchivedDualConnector {
     }
 }
 
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::connector::dual_connector::DualConnector> for DualConnector {
+    fn from(old: crate::legacy::dictionary::connector::dual_connector::DualConnector) -> Self {
+        Self {
+            matrix_connector: old.matrix_connector.into(),
+            right_conn_id_map: old.right_conn_id_map,
+            left_conn_id_map: old.left_conn_id_map,
+            right_feat_ids: old.right_feat_ids.into_iter().map(Into::into).collect(),
+            left_feat_ids: old.left_feat_ids.into_iter().map(Into::into).collect(),
+            raw_scorer: old.raw_scorer.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

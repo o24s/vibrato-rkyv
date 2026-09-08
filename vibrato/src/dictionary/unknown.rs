@@ -361,6 +361,29 @@ impl ArchivedUnkHandler {
     }
 }
 
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::unknown::UnkHandler> for UnkHandler {
+    fn from(old: crate::legacy::dictionary::unknown::UnkHandler) -> Self {
+        Self {
+            offsets: old.offsets,
+            entries: old.entries.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::unknown::UnkEntry> for UnkEntry {
+    fn from(old: crate::legacy::dictionary::unknown::UnkEntry) -> Self {
+        Self {
+            cate_id: old.cate_id,
+            left_id: old.left_id,
+            right_id: old.right_id,
+            word_cost: old.word_cost,
+            feature: old.feature,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,6 +1,6 @@
-mod dual_connector;
-mod matrix_connector;
-mod raw_connector;
+pub(crate) mod dual_connector;
+pub(crate) mod matrix_connector;
+pub(crate) mod raw_connector;
 
 use bincode::{Decode, Encode};
 

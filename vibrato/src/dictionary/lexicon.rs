@@ -255,6 +255,18 @@ impl ArchivedLexicon {
     }
 }
 
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::lexicon::Lexicon> for Lexicon {
+    fn from(old: crate::legacy::dictionary::lexicon::Lexicon) -> Self {
+        Self {
+            map: old.map.into(),
+            params: old.params.into(),
+            features: old.features.into(),
+            lex_type: old.lex_type.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

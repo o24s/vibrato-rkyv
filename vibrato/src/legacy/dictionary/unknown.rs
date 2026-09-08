@@ -12,6 +12,6 @@ pub struct UnkEntry {
 /// Handler of unknown words.
 #[derive(Decode, Encode)]
 pub struct UnkHandler {
-    offsets: Vec<usize>, // indexed by category id
-    entries: Vec<UnkEntry>,
+    pub(crate) offsets: Vec<usize>, // indexed by category id
+    pub(crate) entries: Vec<UnkEntry>,
 }

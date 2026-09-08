@@ -82,6 +82,9 @@ where
 pub fn run(args: Args) -> Result<(), DictgenError> {
     let model_rdr = zstd::Decoder::new(File::open(args.model_in)?)?;
     let mut model = Model::read_model(model_rdr)?;
+    if let Some(path) = &args.user_lexicon_in {
+        model.read_user_lexicon(File::open(path)?)?;
+    }
 
     let mut sources = create_dictionary_writers_from_paths(
         &args.lexicon_out,

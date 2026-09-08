@@ -159,6 +159,19 @@ impl ConnectorCost for ArchivedMatrixConnector {
     }
 }
 
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::connector::matrix_connector::MatrixConnector>
+    for MatrixConnector
+{
+    fn from(old: crate::legacy::dictionary::connector::matrix_connector::MatrixConnector) -> Self {
+        Self {
+            data: old.data,
+            num_right: old.num_right,
+            num_left: old.num_left,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -6,8 +6,8 @@ use crate::legacy::dictionary::connector::raw_connector::scorer::{Scorer, U31x8}
 
 #[derive(Decode, Encode)]
 pub struct RawConnector {
-    right_feat_ids: Vec<U31x8>,
-    left_feat_ids: Vec<U31x8>,
-    feat_template_size: usize,
-    scorer: Scorer,
+    pub(crate) right_feat_ids: Vec<U31x8>,
+    pub(crate) left_feat_ids: Vec<U31x8>,
+    pub(crate) feat_template_size: usize,
+    pub(crate) scorer: Scorer,
 }

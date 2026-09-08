@@ -20,6 +20,7 @@ pub struct Tokenizer {
     // For the MeCab compatibility
     space_cateset: Option<u32>,
     max_grouping_len: Option<usize>,
+    prefer_dictionary_on_tie: bool,
 }
 
 impl Tokenizer {
@@ -36,7 +37,16 @@ impl Tokenizer {
             dict: Arc::new(dict),
             space_cateset: None,
             max_grouping_len: None,
+            prefer_dictionary_on_tie: false,
         }
+    }
+
+    /// Prefers dictionary tokens over unknown tokens with the same span and tied path costs.
+    ///
+    /// This affects 1-best selection only. Disabled by default to preserve existing selection.
+    pub fn prefer_dictionary_on_tie(mut self, yes: bool) -> Self {
+        self.prefer_dictionary_on_tie = yes;
+        self
     }
 
     /// Creates a new tokenizer from `DictionaryInner`.
@@ -48,6 +58,7 @@ impl Tokenizer {
             }),
             space_cateset: None,
             max_grouping_len: None,
+            prefer_dictionary_on_tie: false,
         }
     }
 
@@ -61,6 +72,7 @@ impl Tokenizer {
             dict,
             space_cateset: None,
             max_grouping_len: None,
+            prefer_dictionary_on_tie: false,
         }
     }
 
@@ -165,6 +177,7 @@ impl Tokenizer {
         C: ConnectorCost,
     {
         lattice.reset(sent.len_char());
+        lattice.prefer_dictionary_on_tie = self.prefer_dictionary_on_tie;
 
         // These variables indicate the starting character positions of words currently stored
         // in the lattice. If ignore_space() is unset, these always have the same values, and

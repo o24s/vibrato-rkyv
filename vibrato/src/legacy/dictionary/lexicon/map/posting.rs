@@ -7,5 +7,5 @@ pub struct Postings {
     // serializing `data` into a byte sequence can reduce the memory usage.
     // However, the memory usage is slight compared to that of the connection matrix.
     // Thus, we implement `data` as `Vec<u32>` for simplicity.
-    data: Vec<u32>,
+    pub(crate) data: Vec<u32>,
 }

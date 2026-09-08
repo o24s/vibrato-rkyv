@@ -60,6 +60,6 @@ impl CharInfo {
 /// Mapping from characters to their information.
 #[derive(Decode, Encode)]
 pub struct CharProperty {
-    chr2inf: Vec<CharInfo>,
-    categories: Vec<String>, // indexed by category id
+    pub(crate) chr2inf: Vec<CharInfo>,
+    pub(crate) categories: Vec<String>, // indexed by category id
 }

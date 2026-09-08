@@ -153,14 +153,7 @@ impl<'w> NbestToken<'w> {
     /// Gets the end position (in characters) of this token.
     #[inline(always)]
     fn end_word(&self) -> usize {
-        let path = &self.worker.nbest_paths[self.path_idx].0;
-        if self.token_idx + 1 < path.len() {
-            // If there is a next token, its start position is our end position.
-            unsafe { (*path[self.token_idx + 1]).start_word }
-        } else {
-            // If this is the last token in the path, the sentence end is our end.
-            self.worker.sent.len_char()
-        }
+        self.node().end_word
     }
 
     /// Gets the surface string of the token.

@@ -302,6 +302,29 @@ impl ArchivedCharProperty {
     }
 }
 
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::character::CharProperty> for CharProperty {
+    fn from(old: crate::legacy::dictionary::character::CharProperty) -> Self {
+        Self {
+            chr2inf: old.chr2inf.into_iter().map(Into::into).collect(),
+            categories: old.categories,
+        }
+    }
+}
+
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::character::CharInfo> for CharInfo {
+    fn from(old: crate::legacy::dictionary::character::CharInfo) -> Self {
+        Self(
+            old.cate_idset()
+                | (old.base_id() << 18)
+                | (u32::from(old.invoke()) << 26)
+                | (u32::from(old.group()) << 27)
+                | (u32::from(old.length()) << 28),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

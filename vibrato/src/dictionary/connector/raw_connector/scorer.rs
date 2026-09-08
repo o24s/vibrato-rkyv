@@ -404,6 +404,31 @@ impl ArchivedU31x8 {
     }
 }
 
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::connector::raw_connector::scorer::U31x8> for U31x8 {
+    fn from(old: crate::legacy::dictionary::connector::raw_connector::scorer::U31x8) -> Self {
+        Self(old.lanes().map(U31))
+    }
+}
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::connector::raw_connector::scorer::Scorer> for Scorer {
+    fn from(old: crate::legacy::dictionary::connector::raw_connector::scorer::Scorer) -> Self {
+        Self {
+            #[cfg(target_feature = "avx2")]
+            bases_len: M256i(unsafe {
+                x86_64::_mm256_set1_epi32(i32::try_from(old.bases.len()).unwrap())
+            }),
+            #[cfg(target_feature = "avx2")]
+            checks_len: M256i(unsafe {
+                x86_64::_mm256_set1_epi32(i32::try_from(old.checks.len()).unwrap())
+            }),
+            bases: old.bases,
+            checks: old.checks,
+            costs: old.costs,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

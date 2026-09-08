@@ -99,11 +99,15 @@ pub fn run(args: Args) -> Result<(), FullBuildError> {
     model_wtr.finish()?;
 
     println!("[2/3] Generating dictionary source files...");
+    let user_path = args
+        .user_lexicon_in
+        .as_ref()
+        .map(|_| args.out_dir.join("user.csv"));
     let mut sources = dictgen::create_dictionary_writers_from_paths(
         &args.out_dir.join("lex.csv"),
         &args.out_dir.join("matrix.def"),
         &args.out_dir.join("unk.def"),
-        None,
+        user_path.as_deref(),
         Some(&args.out_dir.join("bigram")), // Base name for .left, .right, .cost
     )?;
 
@@ -124,7 +128,11 @@ pub fn run(args: Args) -> Result<(), FullBuildError> {
         dual_connector: args.dual_connector,
     };
 
-    let dict_inner = build::build_dictionary(&build_source)?;
+    drop(sources);
+    let mut dict_inner = build::build_dictionary(&build_source)?;
+    if let Some(path) = user_path {
+        dict_inner = dict_inner.reset_user_lexicon_from_reader(Some(File::open(path)?))?;
+    }
 
     let sysdic_path = args.out_dir.join("system.dic.zst");
     let mut sysdic_wtr = zstd::Encoder::new(File::create(sysdic_path)?, 19)?;

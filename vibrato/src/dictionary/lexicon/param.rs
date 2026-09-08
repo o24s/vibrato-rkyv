@@ -69,3 +69,23 @@ impl ArchivedWordParams {
         self.params[word_id].to_native()
     }
 }
+
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::lexicon::param::WordParams> for WordParams {
+    fn from(old: crate::legacy::dictionary::lexicon::param::WordParams) -> Self {
+        Self {
+            params: old.params.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::lexicon::param::WordParam> for WordParam {
+    fn from(old: crate::legacy::dictionary::lexicon::param::WordParam) -> Self {
+        Self {
+            left_id: old.left_id,
+            right_id: old.right_id,
+            word_cost: old.word_cost,
+        }
+    }
+}

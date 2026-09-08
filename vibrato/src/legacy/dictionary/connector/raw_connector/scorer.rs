@@ -71,14 +71,14 @@ impl Encode for U31x8 {
 }
 
 pub struct Scorer {
-    bases: Vec<u32>,
-    checks: Vec<u32>,
-    costs: Vec<i32>,
+    pub(crate) bases: Vec<u32>,
+    pub(crate) checks: Vec<u32>,
+    pub(crate) costs: Vec<i32>,
 
     #[cfg(target_feature = "avx2")]
-    bases_len: __m256i,
+    pub(crate) bases_len: __m256i,
     #[cfg(target_feature = "avx2")]
-    checks_len: __m256i,
+    pub(crate) checks_len: __m256i,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -135,5 +135,23 @@ impl Encode for Scorer {
         Encode::encode(&self.checks, encoder)?;
         Encode::encode(&self.costs, encoder)?;
         Ok(())
+    }
+}
+
+impl U31x8 {
+    pub(crate) fn lanes(self) -> [u32; 8] {
+        #[cfg(not(target_feature = "avx2"))]
+        {
+            self.0.map(|x| x.get())
+        }
+        #[cfg(target_feature = "avx2")]
+        {
+            let mut lanes = [0u32; 8];
+            // The unaligned store writes exactly 32 bytes into this 32-byte array.
+            unsafe {
+                x86_64::_mm256_storeu_si256(lanes.as_mut_ptr().cast(), self.0);
+            }
+            lanes
+        }
     }
 }

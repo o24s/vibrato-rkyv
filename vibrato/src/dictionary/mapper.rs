@@ -146,6 +146,16 @@ impl ConnIdCounter {
     }
 }
 
+#[cfg(feature = "legacy")]
+impl From<crate::legacy::dictionary::mapper::ConnIdMapper> for ConnIdMapper {
+    fn from(old: crate::legacy::dictionary::mapper::ConnIdMapper) -> Self {
+        Self {
+            left: old.left,
+            right: old.right,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
