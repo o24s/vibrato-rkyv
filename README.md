@@ -266,7 +266,14 @@ EOS
 
 ### Using a User Dictionary
 
-**IMPORTANT:** In `vibrato-rkyv`, user dictionaries can no longer be specified as a runtime option. They must be compiled into the system dictionary beforehand.
+The library accepts a user lexicon at runtime through
+`Tokenizer::with_user_lexicon(reader)`, sharing the system dictionary with existing
+workers. `Tokenizer::suppress_unknown_for_user_lexicon(true)` removes unknown
+candidates with exactly the same character span as a user entry from 1-best,
+N-best, and lattice snapshots. This option is disabled by default. Longer unknown
+words and system dictionary entries still compete by cost.
+
+The command-line compiler can also embed a user lexicon in the dictionary:
 
 **Option: With the `compiler full-build` command**
 

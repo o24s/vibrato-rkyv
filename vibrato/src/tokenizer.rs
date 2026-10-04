@@ -22,6 +22,7 @@ pub struct Tokenizer {
     space_cateset: Option<u32>,
     max_grouping_len: Option<usize>,
     prefer_dictionary_on_tie: bool,
+    suppress_unknown_for_user_lexicon: bool,
 }
 
 impl Tokenizer {
@@ -40,6 +41,7 @@ impl Tokenizer {
             space_cateset: None,
             max_grouping_len: None,
             prefer_dictionary_on_tie: false,
+            suppress_unknown_for_user_lexicon: false,
         }
     }
 
@@ -82,6 +84,16 @@ impl Tokenizer {
         self
     }
 
+    /// Suppresses unknown tokens with exactly the same character span as a user entry.
+    ///
+    /// Disabled by default. When enabled, this applies to 1-best, N-best, and lattice
+    /// snapshots. System entries and unknown tokens of other lengths still compete
+    /// by cost. Both dictionary-owned and tokenizer-owned user lexicons are supported.
+    pub fn suppress_unknown_for_user_lexicon(mut self, yes: bool) -> Self {
+        self.suppress_unknown_for_user_lexicon = yes;
+        self
+    }
+
     /// Creates a new tokenizer from `DictionaryInner`.
     pub fn from_inner(dict: DictionaryInner) -> Self {
         Self {
@@ -93,6 +105,7 @@ impl Tokenizer {
             space_cateset: None,
             max_grouping_len: None,
             prefer_dictionary_on_tie: false,
+            suppress_unknown_for_user_lexicon: false,
         }
     }
 
@@ -108,6 +121,7 @@ impl Tokenizer {
             space_cateset: None,
             max_grouping_len: None,
             prefer_dictionary_on_tie: false,
+            suppress_unknown_for_user_lexicon: false,
         }
     }
 
@@ -319,6 +333,7 @@ macro_rules! add_lattice_edges_logic {
         $dict:expr,
     ) => {{
         let mut has_matched = false;
+        let mut user_match_ends = Vec::new();
         let suffix = &$sent.chars()[$start_word..];
 
         if let Some(user_lexicon) = $self.user_lexicon.as_ref() {
@@ -333,6 +348,9 @@ macro_rules! add_lattice_edges_logic {
                     $connector,
                 );
                 has_matched = true;
+                if $self.suppress_unknown_for_user_lexicon {
+                    user_match_ends.push($start_word + m.end_char);
+                }
             }
         } else if let Some(user_lexicon) = $dict.user_lexicon().as_ref() {
             for m in user_lexicon.common_prefix_iterator(suffix) {
@@ -346,6 +364,9 @@ macro_rules! add_lattice_edges_logic {
                     $connector,
                 );
                 has_matched = true;
+                if $self.suppress_unknown_for_user_lexicon {
+                    user_match_ends.push($start_word + m.end_char);
+                }
             }
         }
 
@@ -368,6 +389,9 @@ macro_rules! add_lattice_edges_logic {
             has_matched,
             $self.max_grouping_len,
             |w| {
+                if user_match_ends.contains(&w.end_char()) {
+                    return;
+                }
                 $lattice.insert_node(
                     $start_node,
                     w.start_char(),

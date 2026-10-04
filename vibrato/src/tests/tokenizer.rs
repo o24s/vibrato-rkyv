@@ -812,3 +812,94 @@ fn archived_system_accepts_independent_user_lexicon() {
             .is_err()
     );
 }
+
+#[test]
+fn user_lexicon_suppression_matches_only_the_exact_span() {
+    for archived in [false, true] {
+        for attached in [false, true] {
+            for enabled in [false, true] {
+                let inner = SystemDictionaryBuilder::from_readers(
+                    "東京,0,0,0,system\n".as_bytes(),
+                    &b"1 1\n0 0 0\n"[..],
+                    &b"DEFAULT 1 1 2\n"[..],
+                    &b"DEFAULT,0,0,100,unknown\n"[..],
+                )
+                .unwrap();
+                let users = "カキ,0,0,150,user\n東京,0,0,150,user\n";
+                let inner = if attached {
+                    inner
+                } else {
+                    inner
+                        .reset_user_lexicon_from_reader(Some(users.as_bytes()))
+                        .unwrap()
+                };
+                let dict = if archived {
+                    let mut bytes = Vec::new();
+                    inner.write(&mut bytes).unwrap();
+                    Dictionary::from_bytes(&bytes).unwrap()
+                } else {
+                    Dictionary::from_inner(inner)
+                };
+                let mut tokenizer = Tokenizer::new(dict);
+                if attached {
+                    tokenizer = tokenizer.with_user_lexicon(users.as_bytes()).unwrap();
+                }
+                if enabled {
+                    tokenizer = tokenizer.suppress_unknown_for_user_lexicon(true);
+                }
+                let mut worker = tokenizer.new_worker();
+                for (text, expected) in [
+                    ("カキ", if enabled { "user" } else { "unknown" }),
+                    ("カキク", "unknown"),
+                    ("東京", "system"),
+                ] {
+                    worker.reset_sentence(text);
+                    worker.tokenize();
+                    assert_eq!(worker.num_tokens(), 1);
+                    assert_eq!(worker.token(0).feature(), expected);
+                    let snapshot = worker.lattice_snapshot().unwrap();
+                    let unknown_exact = snapshot
+                        .nodes
+                        .iter()
+                        .any(|node| node.feature == "unknown" && node.range_char == (0..2));
+                    assert_eq!(unknown_exact, !enabled);
+                    if text == "カキク" {
+                        assert!(
+                            snapshot
+                                .nodes
+                                .iter()
+                                .any(|node| node.feature == "unknown" && node.range_char == (0..3))
+                        );
+                    }
+                    worker.tokenize_nbest(8);
+                    assert_eq!(
+                        worker
+                            .nbest_token_iter(0)
+                            .unwrap()
+                            .next()
+                            .unwrap()
+                            .feature(),
+                        expected
+                    );
+                    if enabled {
+                        for path in 0..worker.num_nbest_paths() {
+                            assert!(
+                                !worker
+                                    .nbest_token_iter(path)
+                                    .unwrap()
+                                    .any(|token| token.feature() == "unknown"
+                                        && token.range_char() == (0..2))
+                            );
+                        }
+                    }
+                }
+                let mut reverted = tokenizer
+                    .suppress_unknown_for_user_lexicon(false)
+                    .new_worker();
+                reverted.reset_sentence("カキ");
+                reverted.tokenize();
+                assert_eq!(reverted.token(0).feature(), "unknown");
+            }
+        }
+    }
+}
