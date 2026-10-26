@@ -11,9 +11,9 @@ pub(crate) mod word_idx;
 
 #[cfg(not(target_family = "wasm"))]
 use std::fs::{self, File, Metadata, create_dir_all};
+use std::io::{self, Read, Write};
 #[cfg(not(target_family = "wasm"))]
-use std::io::{self, Seek, SeekFrom};
-use std::io::{Read, Write};
+use std::io::{Seek, SeekFrom};
 use std::ops::Deref;
 
 #[cfg(not(target_family = "wasm"))]
@@ -134,7 +134,10 @@ pub struct DictionaryInner {
 #[allow(dead_code)]
 enum DictBuffer {
     #[cfg(not(target_family = "wasm"))]
-    Mmap(Mmap),
+    Mmap {
+        _map: Mmap,
+        file: File,
+    },
     Aligned(AlignedVec<16>),
     Unowned,
 }
@@ -367,6 +370,46 @@ impl DictionaryInner {
 }
 
 impl Dictionary {
+    /// Copies the mapped serialization from its retained backing file, including header and padding.
+    ///
+    /// Returns `Some(byte_count)` for a file-backed archive and `None` without
+    /// writing for owned or memory-backed dictionaries.
+    /// A converted legacy cache contains rkyv bytes, not the original bincode input.
+    /// The backing file must remain unmodified for the dictionary's lifetime.
+    /// Retaining the file preserves its identity across path replacement, not a snapshot of its contents.
+    /// Copies read the retained file rather than reopening its path, use bounded memory,
+    /// and have independent positions, including concurrent or repeated calls.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the backing file was truncated or reading or writing fails.
+    pub fn copy_serialized_bytes<W: Write>(&self, writer: &mut W) -> io::Result<Option<u64>> {
+        #[cfg(not(target_family = "wasm"))]
+        if let Self::Archived(ArchivedDictionary {
+            _buffer: DictBuffer::Mmap { _map, file },
+            ..
+        }) = self
+        {
+            let expected = _map.len() as u64;
+            let source = PositionedReader {
+                file,
+                offset_bytes: 0,
+            }
+            .take(expected);
+            let mut reader = io::BufReader::with_capacity(1 << 20, source);
+            let copied = io::copy(&mut reader, writer)?;
+            if copied != expected {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "dictionary backing file was truncated after loading",
+                ));
+            }
+            return Ok(Some(copied));
+        }
+        let _ = writer;
+        Ok(None)
+    }
+
     pub(crate) fn prepare_user_lexicon<R: Read>(&self, reader: R) -> Result<Lexicon> {
         let mut lexicon = Lexicon::from_reader(reader, LexType::User)?;
         let valid = match self {
@@ -625,7 +668,7 @@ impl Dictionary {
             let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
             return {
                 Ok(Dictionary::Archived(ArchivedDictionary {
-                    _buffer: DictBuffer::Mmap(mmap),
+                    _buffer: DictBuffer::Mmap { _map: mmap, file },
                     data,
                 }))
             };
@@ -642,7 +685,7 @@ impl Dictionary {
             let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
             return {
                 Ok(Dictionary::Archived(ArchivedDictionary {
-                    _buffer: DictBuffer::Mmap(mmap),
+                    _buffer: DictBuffer::Mmap { _map: mmap, file },
                     data,
                 }))
             };
@@ -656,7 +699,7 @@ impl Dictionary {
 
                 let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
                 Ok(Self::Archived(ArchivedDictionary {
-                    _buffer: DictBuffer::Mmap(mmap),
+                    _buffer: DictBuffer::Mmap { _map: mmap, file },
                     data,
                 }))
             }
@@ -771,7 +814,7 @@ impl Dictionary {
         let archived = unsafe { access_unchecked::<ArchivedDictionaryInner>(data_bytes) };
         let data: &'static ArchivedDictionaryInner = unsafe { &*(archived as *const _) };
         Ok(Self::Archived(ArchivedDictionary {
-            _buffer: DictBuffer::Mmap(mmap),
+            _buffer: DictBuffer::Mmap { _map: mmap, file },
             data,
         }))
     }
@@ -1405,6 +1448,38 @@ impl Dictionary {
         temp_file.persist(output_path)?;
 
         Ok(())
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+struct PositionedReader<'a> {
+    file: &'a File,
+    offset_bytes: u64,
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Read for PositionedReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        #[cfg(unix)]
+        let count = {
+            use std::os::unix::fs::FileExt;
+            self.file.read_at(buffer, self.offset_bytes)?
+        };
+        #[cfg(windows)]
+        let count = {
+            use std::os::windows::fs::FileExt;
+            self.file.seek_read(buffer, self.offset_bytes)?
+        };
+        #[cfg(any(unix, windows))]
+        {
+            self.offset_bytes += count as u64;
+            Ok(count)
+        }
+        #[cfg(not(any(unix, windows)))]
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "positioned dictionary reads are unavailable on this target",
+        ))
     }
 }
 
